@@ -23,8 +23,14 @@ import RoomManagementScreen from '../screens/rooms/RoomManagementScreen';
 import PatientHistoryScreen from '../screens/patients/PatientHistoryScreen';
 import PatientHistoryDetailScreen from '../screens/patients/PatientHistoryDetailScreen';
 import DoctorDashboardScreen from '../screens/doctor/DoctorDashboardScreen';
+import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import AdminAppointmentsScreen from '../screens/admin/AdminAppointmentsScreen';
+import AdminAppointmentFormScreen from '../screens/admin/AdminAppointmentFormScreen';
 import DoctorInPatientScreen from '../screens/doctor/DoctorInPatientScreen';
 import DoctorOutPatientScreen from '../screens/doctor/DoctorOutPatientScreen';
+import DoctorAppointmentsScreen from '../screens/doctor/DoctorAppointmentsScreen';
+import DoctorOutPatientDetailScreen from '../screens/doctor/DoctorOutPatientDetailScreen';
+import DoctorInPatientDetailScreen from '../screens/doctor/DoctorInPatientDetailScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import AdmitPatientScreen from '../screens/inpatient/AdmitPatientScreen';
 import InPatientVitalsScreen from '../screens/inpatient/InPatientVitalsScreen';
@@ -117,6 +123,35 @@ function PatientHistoryNavigator() {
   );
 }
 
+
+// ─── Doctor Stack ─────────────────────────────────────────────────────────────
+const DoctorStack = createNativeStackNavigator();
+function DoctorNavigator() {
+  return (
+    <DoctorStack.Navigator screenOptions={{headerShown: false}} initialRouteName="DoctorDashboard">
+      <DoctorStack.Screen name="DoctorDashboard"    component={DoctorDashboardScreen} />
+      <DoctorStack.Screen name="DoctorAppointments" component={DoctorAppointmentsScreen} />
+      <DoctorStack.Screen name="DoctorInPatient"    component={DoctorInPatientScreen} />
+      <DoctorStack.Screen name="DoctorOutPatient"   component={DoctorOutPatientScreen} />
+      <DoctorStack.Screen name="DoctorOutPatientDetail" component={DoctorOutPatientDetailScreen} />
+      <DoctorStack.Screen name="DoctorInPatientDetail"  component={DoctorInPatientDetailScreen} />
+    </DoctorStack.Navigator>
+  );
+}
+
+// ─── Admin Stack ──────────────────────────────────────────────────────────────
+const AdminStack = createNativeStackNavigator();
+function AdminNavigator() {
+  return (
+    <AdminStack.Navigator screenOptions={{headerShown: false}} initialRouteName="AdminDashboard">
+      <AdminStack.Screen name="AdminDashboard"          component={AdminDashboardScreen} />
+      <AdminStack.Screen name="AdminAppointments"       component={AdminAppointmentsScreen} />
+      <AdminStack.Screen name="AdminAppointmentForm"    component={AdminAppointmentFormScreen} />
+      <AdminStack.Screen name="AdminCreateAppointment"  component={BookAppointmentScreen} />
+    </AdminStack.Navigator>
+  );
+}
+
 // ─── Bottom Tabs ─────────────────────────────────────────────────────────────
 const Tab = createBottomTabNavigator();
 function BottomTabs() {
@@ -185,9 +220,10 @@ function CustomDrawerContent(props: any) {
 
 // ─── Main Drawer ─────────────────────────────────────────────────────────────
 const Drawer = createDrawerNavigator();
-export default function MainDrawer() {
+export default function MainDrawer({initialRoute}: {initialRoute?: string}) {
   return (
     <Drawer.Navigator
+      initialRouteName={initialRoute || 'Home'}
       drawerContent={props => <CustomDrawerContent {...props} />}
       screenOptions={{
         headerShown: false,
@@ -213,19 +249,14 @@ export default function MainDrawer() {
         options={{drawerLabel: 'Out-Patients', drawerIcon: ({color}) => <Icon name="calendar-check-outline" size={20} color={color} />}}
       />
       <Drawer.Screen
-        name="DoctorDashboard"
-        component={DoctorDashboardScreen}
+        name="AdminPortal"
+        component={AdminNavigator}
+        options={{drawerLabel: 'Admin Portal', drawerIcon: ({color}) => <Icon name="shield-crown-outline" size={20} color={color} />}}
+      />
+      <Drawer.Screen
+        name="DoctorPortal"
+        component={DoctorNavigator}
         options={{drawerLabel: 'Doctor Portal', drawerIcon: ({color}) => <Icon name="stethoscope" size={20} color={color} />}}
-      />
-      <Drawer.Screen
-        name="DoctorInPatient"
-        component={DoctorInPatientScreen}
-        options={{drawerLabel: 'Doctor In-Patients', drawerIcon: ({color}) => <Icon name="hospital-box-outline" size={20} color={color} />}}
-      />
-      <Drawer.Screen
-        name="DoctorOutPatient"
-        component={DoctorOutPatientScreen}
-        options={{drawerLabel: 'Doctor Out-Patients', drawerIcon: ({color}) => <Icon name="account-clock-outline" size={20} color={color} />}}
       />
       <Drawer.Screen
         name="PatientHistoryNav"

@@ -30,10 +30,20 @@ export const AuthProvider: React.FC<{children: React.ReactNode}> = ({children}) 
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Always clear session on app open — user must log in every time.
+    // TODO: When backend is ready, swap this block to restore the token
+    // and validate it against the server instead:
+    //
+    // const stored = await AsyncStorage.getItem('user_data');
+    // if (stored) {
+    //   const parsed = JSON.parse(stored);
+    //   const valid = await validateToken(parsed.token); // call your API
+    //   if (valid) setUser(parsed);
+    //   else await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+    // }
     (async () => {
       try {
-        const stored = await AsyncStorage.getItem('user_data');
-        if (stored) setUser(JSON.parse(stored));
+        await AsyncStorage.multiRemove(['auth_token', 'user_data']);
       } finally {
         setIsLoading(false);
       }

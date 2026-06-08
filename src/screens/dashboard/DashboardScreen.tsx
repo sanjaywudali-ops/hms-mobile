@@ -15,12 +15,16 @@ import {LoadingScreen, StatCard, Card, SectionHeader} from '../../components/com
 
 const {width} = Dimensions.get('window');
 
+import {getAllCounts as getMockCounts} from '../../constants/mockHospitalData';
+
 function useAllCounts() {
   return useQuery({
     queryKey: ['all-counts'],
     queryFn: async () => {
-      const res = await instance.get(api.getAllCounts);
-      return res.data.data;
+      // TODO: Swap back to real API when backend is ready:
+      // const res = await instance.get(api.getAllCounts);
+      // return res.data.data;
+      return getMockCounts();
     },
     staleTime: 60000,
   });
@@ -38,7 +42,7 @@ export default function DashboardScreen({navigation}: any) {
 
   const quickActions = [
     {label: 'Book Appt.', icon: 'calendar-plus', screen: 'OutPatient', color: COLORS.primary, bg: COLORS.primaryLight},
-    {label: 'Admit Patient', icon: 'bed-plus', screen: 'InPatient', color: COLORS.success, bg: COLORS.successLight},
+    {label: 'Admit Patient', icon: 'hospital-box-outline', screen: 'InPatient', color: COLORS.success, bg: COLORS.successLight},
     {label: 'Lab Orders', icon: 'flask-outline', screen: 'Laboratory', color: COLORS.purple, bg: '#f5f3ff'},
     {label: 'Pharmacy', icon: 'pill', screen: 'Pharmacy', color: COLORS.orange, bg: '#fff7ed'},
   ];
@@ -121,8 +125,9 @@ export default function DashboardScreen({navigation}: any) {
         <View style={styles.moduleGrid}>
           {[
             {label: 'Patient History', icon: 'history', screen: 'PatientHistoryNav', color: COLORS.primary},
-            {label: 'Doctor Portal', icon: 'stethoscope', screen: 'DoctorDashboard', color: COLORS.success},
-            {label: 'Staff Registry', icon: 'badge-account-outline', screen: 'Staff', color: COLORS.purple},
+            {label: 'Appointments',    icon: 'calendar-clock-outline', screen: 'AdminAppointments', color: COLORS.warning},
+            {label: 'Doctor Portal',   icon: 'stethoscope', screen: 'DoctorPortal', color: COLORS.success},
+            {label: 'Staff Registry',  icon: 'badge-account-outline', screen: 'Staff', color: COLORS.purple},
             {label: 'Room Management', icon: 'door-open', screen: 'Rooms', color: COLORS.orange},
           ].map(mod => (
             <TouchableOpacity
