@@ -1,51 +1,472 @@
-{
-  "name": "HMSMobile",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "android": "react-native run-android",
-    "ios": "react-native run-ios",
-    "start": "react-native start",
-    "lint": "eslint ."
-  },
-  "dependencies": {
-    "@hookform/resolvers": "^3.6.0",
-    "@react-native-async-storage/async-storage": "^1.23.1",
-    "@react-navigation/bottom-tabs": "^6.5.20",
-    "@react-navigation/drawer": "^6.6.15",
-    "@react-navigation/native": "^6.1.17",
-    "@react-navigation/native-stack": "^6.9.26",
-    "@tanstack/react-query": "^5.45.0",
-    "axios": "^1.7.2",
-    "date-fns": "^3.6.0",
-    "react": "18.2.0",
-    "react-hook-form": "^7.52.0",
-    "react-native": "0.74.1",
-    "react-native-calendars": "^1.1305.0",
-    "react-native-chart-kit": "^6.12.0",
-    "react-native-gesture-handler": "^2.14.1",
-    "react-native-modal": "^13.0.1",
-    "react-native-paper": "^5.12.3",
-    "react-native-picker-select": "^9.3.0",
-    "react-native-reanimated": "^3.10.1",
-    "react-native-safe-area-context": "^4.10.1",
-    "react-native-screens": "^3.29.0",
-    "react-native-svg": "^13.14.0",
-    "react-native-toast-message": "^2.2.0",
-    "react-native-vector-icons": "^10.1.0",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.20.0",
-    "@babel/preset-env": "^7.20.0",
-    "@babel/runtime": "^7.20.0",
-    "@react-native/babel-preset": "0.74.83",
-    "@react-native/eslint-config": "0.74.83",
-    "@react-native/metro-config": "0.74.83",
-    "@react-native/typescript-config": "0.74.83",
-    "@types/react": "^18.2.6",
-    "@types/react-native": "^0.73.0",
-    "@types/react-native-vector-icons": "^6.4.18",
-    "typescript": "5.0.4"
-  }
+import React, {useState, useCallback} from 'react';
+import {
+View, Text, StyleSheet, FlatList, TouchableOpacity,
+TextInput, StatusBar, ActivityIndicator, Alert, Modal, ScrollView,
+RefreshControl,
+} from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useQuery, useMutation, useQueryClient} from '@tanstack/react-query';
+import {format} from 'date-fns';
+import {COLORS, FONTS, SPACING, RADIUS, SHADOW} from '../../constants/theme';
+import {instance} from '../../services/axios';
+
+// ─── API endpoints (lab-specific) ────────────────────────────────────────────
+const LAB_API = {
+getLabOrders:        '/api/v1/lab/getLabOrders',
+updateLabOrderStatus:(id: string) => `/api/v1/lab/updateLabOrderStatus/${id}`,
+cancelLabOrder:      (id: string) => `/api/v1/lab/cancelLabOrder/${id}`,
+enterLabValues:      (id: string) => `/api/v1/lab/enterLabValues/${id}`,
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+type LabStatus = 'PENDING'|'CONFIRMED'|'COLLECTED'|'PROCESSING'|'COMPLETED'|'CANCELLED';
+
+const STATUS_CONFIG: Record<LabStatus, {color: string; bg: string; icon: string; next?: LabStatus; nextLabel?: string}> = {
+PENDING:    {color:'#B45309', bg:'#FEF3C7', icon:'clock-outline',         next:'CONFIRMED',  nextLabel:'Confirm'},
+CONFIRMED:  {color:'#0369A1', bg:'#E0F2FE', icon:'check-circle-outline',  next:'COLLECTED',  nextLabel:'Collect'},
+COLLECTED:  {color:'#1D4ED8', bg:'#DBEAFE', icon:'test-tube',             next:'PROCESSING', nextLabel:'Process'},
+PROCESSING: {color:'#D97706', bg:'#FEF3C7', icon:'cog-outline',           next:'COMPLETED',  nextLabel:'Complete'},
+COMPLETED:  {color:'#065F46', bg:'#D1FAE5', icon:'check-all'},
+CANCELLED:  {color:'#991B1B', bg:'#FEE2E2', icon:'close-circle-outline'},
+};
+
+const FILTER_TABS: {label: string; value: LabStatus | 'ALL'}[] = [
+{label:'All',        value:'ALL'},
+{label:'Pending',    value:'PENDING'},
+{label:'Confirmed',  value:'CONFIRMED'},
+{label:'Collected',  value:'COLLECTED'},
+{label:'Processing', value:'PROCESSING'},
+{label:'Completed',  value:'COMPLETED'},
+{label:'Cancelled',  value:'CANCELLED'},
+];
+
+// ─── Enter Results Modal ──────────────────────────────────────────────────────
+function EnterResultsModal({order, visible, onClose, onSuccess}: {
+order: any; visible: boolean; onClose: () => void; onSuccess: () => void;
+}) {
+const [results, setResults] = useState<Record<string, string>>({});
+const [notes,   setNotes]   = useState('');
+
+const tests = order?.testIds || order?.labConfigurations || [];
+
+const mutation = useMutation({
+mutationFn: async () => {
+await instance.post(LAB_API.enterLabValues(order.id), {
+results: Object.entries(results).map(([testId, value]) => ({testId, value})),
+notes,
+});
+},
+onSuccess: () => {
+Alert.alert('Success', 'Lab results entered successfully');
+onSuccess(); onClose();
+},
+onError: (err: any) => Alert.alert('Error', err?.response?.data?.message || 'Failed to enter results'),
+});
+
+if (!order) return null;
+
+return (
+<Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+<View style={m.overlay}>
+<View style={m.sheet}>
+<View style={m.handle}/>
+<View style={m.header}>
+<Text style={m.title}>Enter Lab Results</Text>
+<TouchableOpacity onPress={onClose} style={m.closeBtn}>
+<Icon name="close" size={20} color={COLORS.textSecondary}/>
+</TouchableOpacity>
+</View>
+
+<ScrollView showsVerticalScrollIndicator={false}>
+<Text style={m.patientName}>
+{order.patient?.user?.fName || ''} {order.patient?.user?.lName || ''}
+</Text>
+<Text style={m.metaText}>
+{order.orderDate ? format(new Date(order.orderDate), 'dd MMM yyyy') : '—'}
+</Text>
+
+{tests.length === 0 ? (
+<Text style={m.noTests}>No tests found for this order</Text>
+) : (
+tests.map((test: any) => (
+<View key={test.id} style={m.testRow}>
+<Text style={m.testName}>{test.name || 'Lab Test'}</Text>
+<TextInput
+style={m.resultInput}
+placeholder="Enter result value"
+placeholderTextColor={COLORS.textMuted}
+value={results[test.id] || ''}
+onChangeText={v => setResults(prev => ({...prev, [test.id]: v}))}
+/>
+</View>
+))
+)}
+
+<View style={m.notesWrap}>
+<Text style={m.testName}>Notes</Text>
+<TextInput
+style={[m.resultInput, {height: 70, textAlignVertical:'top'}]}
+placeholder="Additional notes..."
+placeholderTextColor={COLORS.textMuted}
+value={notes}
+onChangeText={setNotes}
+multiline
+/>
+</View>
+
+<TouchableOpacity
+style={[m.submitBtn, {opacity: mutation.isPending ? 0.7 : 1}]}
+onPress={() => mutation.mutate()}
+disabled={mutation.isPending}>
+{mutation.isPending
+? <ActivityIndicator color={COLORS.white}/>
+: <Text style={m.submitBtnText}>Submit Results</Text>
 }
+</TouchableOpacity>
+</ScrollView>
+</View>
+</View>
+</Modal>
+);
+}
+
+// ─── Lab Order Card ───────────────────────────────────────────────────────────
+function LabOrderCard({item, onStatusUpdate, onCancel, onEnterResults}: {
+item: any;
+onStatusUpdate: (id: string, status: LabStatus) => void;
+onCancel:       (id: string) => void;
+onEnterResults: (order: any) => void;
+}) {
+const cfg         = STATUS_CONFIG[item.status as LabStatus] || STATUS_CONFIG['PENDING'];
+const patientName = `${item.patient?.user?.fName||''} ${item.patient?.user?.lName||''}`.trim() || 'Unknown';
+const doctorName  = `Dr. ${item.doctor?.user?.fName||''} ${item.doctor?.user?.lName||''}`.trim();
+const tests       = item.testIds || item.labConfigurations || [];
+const initials    = patientName.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase();
+
+return (
+<View style={c.wrap}>
+{/* Top row */}
+<View style={c.top}>
+<View style={c.avatar}>
+<Text style={c.avatarText}>{initials}</Text>
+</View>
+<View style={{flex:1}}>
+<Text style={c.name}>{patientName}</Text>
+<View style={c.metaRow}>
+<Icon name="phone-outline" size={11} color={COLORS.textMuted}/>
+<Text style={c.metaText}>{item.patient?.user?.phoneNumber || '—'}</Text>
+</View>
+</View>
+<View style={[c.badge, {backgroundColor: cfg.bg}]}>
+<Icon name={cfg.icon} size={11} color={cfg.color}/>
+<Text style={[c.badgeText, {color: cfg.color}]}>{item.status}</Text>
+</View>
+</View>
+
+<View style={c.divider}/>
+
+{/* Info row */}
+<View style={c.infoRow}>
+<View style={c.infoItem}>
+<Icon name="stethoscope" size={13} color={COLORS.textMuted}/>
+<Text style={c.infoText}>{doctorName}</Text>
+</View>
+<View style={c.infoItem}>
+<Icon name="calendar-outline" size={13} color={COLORS.textMuted}/>
+<Text style={c.infoText}>{item.orderDate ? format(new Date(item.orderDate), 'dd MMM yyyy') : '—'}</Text>
+</View>
+</View>
+
+{/* Tests */}
+{tests.length > 0 && (
+<View style={c.testsWrap}>
+{tests.slice(0,3).map((t: any, i: number) => (
+<View key={i} style={c.testChip}>
+<Icon name="flask-outline" size={10} color={COLORS.primary}/>
+<Text style={c.testChipText}>{t.name || 'Lab Test'}</Text>
+</View>
+))}
+{tests.length > 3 && (
+<View style={c.testChip}>
+<Text style={c.testChipText}>+{tests.length - 3} more</Text>
+</View>
+)}
+</View>
+)}
+
+{/* Actions */}
+{item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
+<View style={c.actions}>
+{/* Next status button */}
+{cfg.next && (
+<TouchableOpacity
+style={[c.actionBtn, {backgroundColor: STATUS_CONFIG[cfg.next].bg}]}
+onPress={() => onStatusUpdate(item.id, cfg.next as LabStatus)}>
+<Icon name={STATUS_CONFIG[cfg.next].icon} size={13} color={STATUS_CONFIG[cfg.next].color}/>
+<Text style={[c.actionBtnText, {color: STATUS_CONFIG[cfg.next].color}]}>{cfg.nextLabel}</Text>
+</TouchableOpacity>
+)}
+
+{/* Enter Results (only for PROCESSING) */}
+{item.status === 'PROCESSING' && (
+<TouchableOpacity
+style={[c.actionBtn, {backgroundColor: '#EDE9FE'}]}
+onPress={() => onEnterResults(item)}>
+<Icon name="clipboard-edit-outline" size={13} color="#6D28D9"/>
+<Text style={[c.actionBtnText, {color:'#6D28D9'}]}>Enter Results</Text>
+</TouchableOpacity>
+)}
+
+{/* Cancel */}
+<TouchableOpacity
+style={[c.actionBtn, {backgroundColor: '#FEE2E2'}]}
+onPress={() => onCancel(item.id)}>
+<Icon name="close-circle-outline" size={13} color="#991B1B"/>
+<Text style={[c.actionBtnText, {color:'#991B1B'}]}>Cancel</Text>
+</TouchableOpacity>
+</View>
+)}
+</View>
+);
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+export default function LaboratoryScreen({navigation}: any) {
+const insets      = useSafeAreaInsets();
+const queryClient = useQueryClient();
+const [filter,   setFilter]   = useState<LabStatus | 'ALL'>('ALL');
+const [search,   setSearch]   = useState('');
+const [page,     setPage]     = useState(1);
+const [selectedOrder, setSelectedOrder] = useState<any>(null);
+const [showResults,   setShowResults]   = useState(false);
+
+const {data, isLoading, isRefetching, refetch} = useQuery({
+queryKey: ['lab-orders', filter, page, search],
+queryFn: async () => {
+const params: any = {page, limit: 15};
+if (filter !== 'ALL') params.status = filter;
+if (search.trim())    params.search = search.trim();
+const res = await instance.get(LAB_API.getLabOrders, {params});
+return res.data;
+},
+});
+
+const orders = data?.data || [];
+const meta   = data?.metadata;
+
+const statusMutation = useMutation({
+mutationFn: ({id, status}: {id: string; status: LabStatus}) =>
+instance.patch(LAB_API.updateLabOrderStatus(id), {status}),
+onSuccess: () => {
+queryClient.invalidateQueries({queryKey: ['lab-orders']});
+},
+onError: (err: any) => Alert.alert('Error', err?.response?.data?.message || 'Failed to update'),
+});
+
+const cancelMutation = useMutation({
+mutationFn: (id: string) => instance.patch(LAB_API.cancelLabOrder(id), {}),
+onSuccess: () => {
+queryClient.invalidateQueries({queryKey: ['lab-orders']});
+},
+onError: (err: any) => Alert.alert('Error', err?.response?.data?.message || 'Failed to cancel'),
+});
+
+const handleCancel = (id: string) => {
+Alert.alert('Cancel Lab Order', 'Are you sure you want to cancel this lab order?', [
+{text: 'No',  style: 'cancel'},
+{text: 'Yes', style: 'destructive', onPress: () => cancelMutation.mutate(id)},
+]);
+};
+
+const handleSearch = useCallback((text: string) => {
+setSearch(text); setPage(1);
+}, []);
+
+const counts: Record<string, number> = {};
+FILTER_TABS.forEach(t => {
+counts[t.value] = t.value === 'ALL'
+? (meta?.totalItems || 0)
+: orders.filter((o: any) => o.status === t.value).length;
+});
+
+if (isLoading) {
+return (
+<View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: COLORS.background}}>
+<ActivityIndicator size="large" color={COLORS.primary}/>
+</View>
+);
+}
+
+return (
+<View style={[s.safe, {paddingTop: insets.top, paddingBottom: insets.bottom}]}>
+<StatusBar barStyle="light-content" backgroundColor={COLORS.primary} translucent={false}/>
+
+{/* Header */}
+<View style={s.header}>
+<TouchableOpacity onPress={() => navigation.openDrawer()} style={s.menuBtn}>
+<Icon name="menu" size={24} color={COLORS.white}/>
+</TouchableOpacity>
+<View style={{flex:1}}>
+<Text style={s.headerTitle}>Laboratory</Text>
+<Text style={s.headerSub}>{meta?.totalItems || 0} total orders</Text>
+</View>
+<TouchableOpacity style={s.refreshBtn} onPress={() => refetch()}>
+<Icon name="refresh" size={20} color={COLORS.white}/>
+</TouchableOpacity>
+</View>
+
+{/* Search */}
+<View style={s.searchWrap}>
+<Icon name="magnify" size={18} color={COLORS.textMuted} style={{marginLeft: SPACING.sm}}/>
+<TextInput
+style={s.searchInput}
+placeholder="Search by patient name..."
+placeholderTextColor={COLORS.textMuted}
+value={search}
+onChangeText={handleSearch}
+/>
+{search.length > 0 && (
+<TouchableOpacity onPress={() => {setSearch(''); setPage(1);}}>
+<Icon name="close-circle" size={18} color={COLORS.textMuted} style={{marginRight: SPACING.sm}}/>
+</TouchableOpacity>
+)}
+</View>
+
+{/* Summary cards */}
+<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.summaryRow}>
+{(Object.keys(STATUS_CONFIG) as LabStatus[]).map(st => {
+const cfg = STATUS_CONFIG[st];
+const count = orders.filter((o: any) => o.status === st).length;
+return (
+<TouchableOpacity key={st} style={[s.summaryCard, {backgroundColor: cfg.bg}]}
+onPress={() => {setFilter(st); setPage(1);}}>
+<Icon name={cfg.icon} size={18} color={cfg.color}/>
+<Text style={[s.summaryCount, {color: cfg.color}]}>{count}</Text>
+<Text style={[s.summaryLabel, {color: cfg.color}]}>{st}</Text>
+</TouchableOpacity>
+);
+})}
+</ScrollView>
+
+{/* Filter tabs */}
+<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabRow}>
+{FILTER_TABS.map(tab => {
+const active = filter === tab.value;
+return (
+<TouchableOpacity key={tab.value} style={[s.tab, active && s.tabActive]}
+onPress={() => {setFilter(tab.value as any); setPage(1);}}>
+<Text style={[s.tabText, active && s.tabTextActive]}>{tab.label}</Text>
+</TouchableOpacity>
+);
+})}
+</ScrollView>
+
+{/* List */}
+<FlatList
+data={orders}
+keyExtractor={item => item.id}
+contentContainerStyle={s.list}
+showsVerticalScrollIndicator={false}
+onRefresh={refetch}
+refreshing={isRefetching}
+ListEmptyComponent={
+<View style={s.empty}>
+<Icon name="flask-outline" size={48} color={COLORS.border}/>
+<Text style={s.emptyText}>No lab orders found</Text>
+</View>
+}
+ListFooterComponent={
+meta?.hasNextPage ? (
+<TouchableOpacity style={s.loadMore} onPress={() => setPage(p => p+1)}>
+<Text style={s.loadMoreText}>Load More</Text>
+</TouchableOpacity>
+) : null
+}
+renderItem={({item}) => (
+<LabOrderCard
+item={item}
+onStatusUpdate={(id, status) => statusMutation.mutate({id, status})}
+onCancel={handleCancel}
+onEnterResults={order => {setSelectedOrder(order); setShowResults(true);}}
+/>
+)}
+/>
+
+{/* Enter Results Modal */}
+<EnterResultsModal
+order={selectedOrder}
+visible={showResults}
+onClose={() => {setShowResults(false); setSelectedOrder(null);}}
+onSuccess={() => queryClient.invalidateQueries({queryKey: ['lab-orders']})}
+/>
+</View>
+);
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+safe:         {flex:1, backgroundColor: COLORS.primary},
+header:       {flexDirection:'row', alignItems:'center', padding: SPACING.lg, gap: SPACING.md},
+menuBtn:      {padding:4},
+headerTitle:  {fontSize: FONTS.sizes.lg, fontWeight: FONTS.weights.bold, color: COLORS.white},
+headerSub:    {fontSize: FONTS.sizes.xs, color:'rgba(255,255,255,0.75)', marginTop:2},
+refreshBtn:   {backgroundColor:'rgba(255,255,255,0.2)', borderRadius:20, padding:8},
+searchWrap:   {flexDirection:'row', alignItems:'center', backgroundColor: COLORS.white, marginHorizontal: SPACING.lg, borderRadius: RADIUS.md, marginBottom: SPACING.sm, borderWidth:1, borderColor: COLORS.border},
+searchInput:  {flex:1, fontSize: FONTS.sizes.base, color: COLORS.text, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xs},
+summaryRow:   {paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm, gap: SPACING.xs},
+summaryCard:  {alignItems:'center', borderRadius: RADIUS.md, padding: SPACING.sm, minWidth:80, gap:2},
+summaryCount: {fontSize: FONTS.sizes.lg, fontWeight: FONTS.weights.bold},
+summaryLabel: {fontSize:9, fontWeight: FONTS.weights.medium, textAlign:'center'},
+tabRow:       {paddingHorizontal: SPACING.lg, paddingBottom: SPACING.sm, gap: SPACING.xs},
+tab:          {paddingHorizontal: SPACING.md, paddingVertical:6, borderRadius:20, backgroundColor:'rgba(255,255,255,0.15)', minWidth:70, alignItems:'center'},
+tabActive:    {backgroundColor: COLORS.white},
+tabText:      {fontSize: FONTS.sizes.xs, color:'rgba(255,255,255,0.85)', fontWeight: FONTS.weights.medium},
+tabTextActive:{color: COLORS.primary, fontWeight: FONTS.weights.bold},
+list:         {padding: SPACING.base, paddingTop: SPACING.sm, backgroundColor:'#F5F7FA', minHeight:'100%'},
+empty:        {alignItems:'center', paddingTop:60, gap: SPACING.md},
+emptyText:    {color: COLORS.textMuted, fontSize: FONTS.sizes.base},
+loadMore:     {margin: SPACING.base, padding: SPACING.md, backgroundColor: COLORS.white, borderRadius: RADIUS.md, alignItems:'center'},
+loadMoreText: {color: COLORS.primary, fontWeight: FONTS.weights.semibold},
+});
+
+const c = StyleSheet.create({
+wrap:         {backgroundColor: COLORS.white, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md, elevation:2, shadowColor:'#000', shadowOpacity:0.06, shadowRadius:4, shadowOffset:{width:0,height:2}},
+top:          {flexDirection:'row', alignItems:'center', gap: SPACING.sm},
+avatar:       {width:42, height:42, borderRadius:21, backgroundColor: COLORS.primaryLight, justifyContent:'center', alignItems:'center'},
+avatarText:   {fontSize: FONTS.sizes.sm, fontWeight: FONTS.weights.bold, color: COLORS.primary},
+name:         {fontSize: FONTS.sizes.base, fontWeight: FONTS.weights.semibold, color: COLORS.text},
+metaRow:      {flexDirection:'row', alignItems:'center', gap:3, marginTop:2},
+metaText:     {fontSize: FONTS.sizes.xs, color: COLORS.textMuted},
+badge:        {flexDirection:'row', alignItems:'center', gap:3, paddingHorizontal:8, paddingVertical:4, borderRadius:20},
+badgeText:    {fontSize:9, fontWeight: FONTS.weights.bold},
+divider:      {height:1, backgroundColor: COLORS.border, marginVertical: SPACING.sm},
+infoRow:      {flexDirection:'row', gap: SPACING.md, flexWrap:'wrap'},
+infoItem:     {flexDirection:'row', alignItems:'center', gap:4},
+infoText:     {fontSize: FONTS.sizes.xs, color: COLORS.textSecondary},
+testsWrap:    {flexDirection:'row', flexWrap:'wrap', gap: SPACING.xs, marginTop: SPACING.sm},
+testChip:     {flexDirection:'row', alignItems:'center', gap:3, backgroundColor: COLORS.primaryLight, paddingHorizontal:8, paddingVertical:3, borderRadius:20},
+testChipText: {fontSize:10, color: COLORS.primary, fontWeight: FONTS.weights.medium},
+actions:      {flexDirection:'row', gap: SPACING.xs, marginTop: SPACING.sm, flexWrap:'wrap'},
+actionBtn:    {flexDirection:'row', alignItems:'center', gap:4, paddingHorizontal: SPACING.sm, paddingVertical:6, borderRadius: RADIUS.sm},
+actionBtnText:{fontSize: FONTS.sizes.xs, fontWeight: FONTS.weights.semibold},
+});
+
+const m = StyleSheet.create({
+overlay:      {flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'flex-end'},
+sheet:        {backgroundColor: COLORS.white, borderTopLeftRadius:24, borderTopRightRadius:24, padding: SPACING.xl, paddingTop: SPACING.md, maxHeight:'85%'},
+handle:       {width:40, height:4, backgroundColor: COLORS.border, borderRadius:2, alignSelf:'center', marginBottom: SPACING.md},
+header:       {flexDirection:'row', alignItems:'center', justifyContent:'space-between', marginBottom: SPACING.md},
+title:        {fontSize: FONTS.sizes.lg, fontWeight: FONTS.weights.bold, color: COLORS.text},
+closeBtn:     {padding:4},
+patientName:  {fontSize: FONTS.sizes.base, fontWeight: FONTS.weights.bold, color: COLORS.text},
+metaText:     {fontSize: FONTS.sizes.xs, color: COLORS.textMuted, marginBottom: SPACING.md},
+noTests:      {fontSize: FONTS.sizes.sm, color: COLORS.textMuted, textAlign:'center', paddingVertical: SPACING.lg},
+testRow:      {marginBottom: SPACING.sm},
+testName:     {fontSize: FONTS.sizes.sm, fontWeight: FONTS.weights.semibold, color: COLORS.text, marginBottom:4},
+resultInput:  {borderWidth:1, borderColor: COLORS.border, borderRadius: RADIUS.sm, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONTS.sizes.base, color: COLORS.text},
+notesWrap:    {marginTop: SPACING.md},
+submitBtn:    {backgroundColor: COLORS.primary, borderRadius: RADIUS.md, padding: SPACING.md, alignItems:'center', marginTop: SPACING.lg},
+submitBtnText:{color: COLORS.white, fontWeight: FONTS.weights.bold, fontSize: FONTS.sizes.base},
+});

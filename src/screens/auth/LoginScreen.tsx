@@ -30,10 +30,7 @@ export default function LoginScreen({navigation}: any) {
   const onSubmit = async (data: LoginForm) => {
     const {identifier, password} = data;
     try {
-      // Backend uses /api/v1/auth/signin with identifier (email/phone) + password
       const res = await instance.post('/api/v1/auth/signin', {identifier, password});
-
-      // Backend response format: { data: { fName, lName, email, token, isAdmin, isDoctor, ... } }
       const userData = res.data?.data;
 
       if (!userData || !userData.token) {
@@ -41,15 +38,20 @@ export default function LoginScreen({navigation}: any) {
         return;
       }
 
-      // Determine role from user flags
+      // Fetch full user profile to get role flags
+      const meRes = await instance.get('/api/v1/auth/me', {
+        headers: {Authorization: `Bearer ${userData.token}`},
+      });
+      const meData = meRes.data?.data;
+
       let role = 'Staff';
-      if (userData.isAdmin) role = 'Admin';
-      else if (userData.isDoctor) role = 'Doctor';
-      else if (userData.isPatient) role = 'Patient';
+      if (meData?.isAdmin) role = 'Admin';
+      else if (meData?.isDoctor) role = 'Doctor';
+      else if (meData?.isPatient) role = 'Patient';
 
       await login({
         token: userData.token,
-        role: role,
+        role,
         name: `${userData.fName || ''} ${userData.lName || ''}`.trim(),
       });
 
@@ -170,16 +172,18 @@ export default function LoginScreen({navigation}: any) {
             style={{marginTop: SPACING.lg}}
           />
 
-          {/* Credentials hint */}
+          {/* Info hint */}
           <View style={styles.hintBox}>
             <Icon name="information-outline" size={14} color={COLORS.primary} />
             <View style={{flex: 1}}>
               <Text style={styles.hintTitle}>Test Credentials</Text>
               <Text style={styles.hintText}>
-                Doctor: rajesh.kumar@example.com{'\n'}
-                Password: rajeshkumar@123{'\n\n'}
-                Doctor: priya.sharma@example.com{'\n'}
-                Password: priyasharma@123
+                Admin{'\n'}
+                Email: vinodkumar@gmail.com{'\n'}
+                Password: vinodkumar@123{'\n\n'}
+                Doctor{'\n'}
+                Email: vikram.reddy@example.com{'\n'}
+                Password: vikramreddy@123
               </Text>
             </View>
           </View>
