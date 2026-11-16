@@ -86,7 +86,7 @@ function DetailModal({appointment, visible, onClose, onAction}: {
 }) {
   const insets = useSafeAreaInsets();
   if (!appointment) return null;
-  const cfg = STATUS_CONFIG[appointment.appointmentStatus] || STATUS_CONFIG['CONFIRMED'];
+  const cfg = STATUS_CONFIG[appointment.status] || STATUS_CONFIG['CONFIRMED'];
   const patientName = `${appointment.patient?.user?.fName || ''} ${appointment.patient?.user?.lName || ''}`.trim();
   const doctorName  = `Dr. ${appointment.doctor?.user?.fName || ''} ${appointment.doctor?.user?.lName || ''}`.trim();
 
@@ -103,28 +103,28 @@ function DetailModal({appointment, visible, onClose, onAction}: {
           </View>
           <View style={[modal.badge, {backgroundColor: cfg.bg}]}>
             <Icon name={cfg.icon} size={13} color={cfg.color}/>
-            <Text style={[modal.badgeText, {color: cfg.color}]}>{appointment.appointmentStatus}</Text>
+            <Text style={[modal.badgeText, {color: cfg.color}]}>{appointment.status}</Text>
           </View>
           <View style={modal.section}>
             <InfoRow icon="account"           label="Patient"    value={patientName || '—'} />
             <InfoRow icon="phone"             label="Phone"      value={appointment.patient?.user?.phoneNumber || '—'} />
             <InfoRow icon="identifier"        label="Patient ID" value={appointment.patient?.patientCode || '—'} />
-            <InfoRow icon="calendar"          label="Date"       value={appointment.date ? format(new Date(appointment.date), 'dd MMM yyyy') : '—'} />
-            <InfoRow icon="clock-outline"     label="Time"       value={appointment.timeSlot?.startTime || '—'} />
+            <InfoRow icon="calendar"          label="Date"       value={appointment.appointmentDate ? format(new Date(appointment.appointmentDate), 'dd MMM yyyy') : '—'} />
+            <InfoRow icon="clock-outline"     label="Time"       value={appointment.startTime ? format(new Date(appointment.startTime), 'hh:mm a') : '—'} />
             <InfoRow icon="stethoscope"       label="Doctor"     value={doctorName} />
             <InfoRow icon="ticket-outline"    label="Token"      value={appointment.tokenNumber ? `#${appointment.tokenNumber}` : '—'} />
             <InfoRow icon="note-text-outline" label="Type"       value={appointment.appointmentType || 'OPD'} />
           </View>
-          {appointment.appointmentStatus !== 'COMPLETED' && appointment.appointmentStatus !== 'CANCELLED' && (
+          {appointment.status !== 'COMPLETED' && appointment.status !== 'CANCELLED' && (
             <View style={modal.actions}>
-              {appointment.appointmentStatus === 'CONFIRMED' && (
+              {appointment.status === 'IN_PROGRESS' && (
                 <TouchableOpacity style={[modal.actionBtn, {backgroundColor: '#FEF3C7'}]}
-                  onPress={() => {onAction(appointment.id, 'IN_PROGRESS'); onClose();}}>
+                  onPress={() => {onAction(appointment.id, 'CONFIRMED'); onClose();}}>
                   <Icon name="clock-outline" size={16} color="#B45309"/>
-                  <Text style={[modal.actionText, {color: '#B45309'}]}>Start</Text>
+                  <Text style={[modal.actionText, {color: '#B45309'}]}>Confirm</Text>
                 </TouchableOpacity>
               )}
-              {appointment.appointmentStatus === 'IN_PROGRESS' && (
+              {appointment.status === 'CONFIRMED' && (
                 <TouchableOpacity style={[modal.actionBtn, {backgroundColor: '#D1FAE5'}]}
                   onPress={() => {onAction(appointment.id, 'COMPLETED'); onClose();}}>
                   <Icon name="check-all" size={16} color="#065F46"/>
@@ -159,7 +159,7 @@ function InfoRow({icon, label, value}: {icon: string; label: string; value: stri
 function AppointmentCard({item, onPress, onAction}: {
   item: any; onPress: () => void; onAction: (id: string, status: string) => void;
 }) {
-  const cfg         = STATUS_CONFIG[item.appointmentStatus] || STATUS_CONFIG['CONFIRMED'];
+  const cfg         = STATUS_CONFIG[item.status] || STATUS_CONFIG['CONFIRMED'];
   const patientName = `${item.patient?.user?.fName || ''} ${item.patient?.user?.lName || ''}`.trim() || 'Unknown Patient';
   const doctorName  = `Dr. ${item.doctor?.user?.fName || ''} ${item.doctor?.user?.lName || ''}`.trim();
   const initials    = patientName.split(' ').map((n:string)=>n[0]).join('').slice(0,2).toUpperCase();
@@ -183,34 +183,34 @@ function AppointmentCard({item, onPress, onAction}: {
         </View>
         <View style={[card.badge, {backgroundColor: cfg.bg}]}>
           <Icon name={cfg.icon} size={11} color={cfg.color}/>
-          <Text style={[card.badgeText, {color: cfg.color}]}>{item.appointmentStatus?.replace('_',' ')}</Text>
+          <Text style={[card.badgeText, {color: cfg.color}]}>{item.status?.replace('_',' ')}</Text>
         </View>
       </View>
       <View style={card.divider}/>
       <View style={card.bottom}>
         <View style={card.meta}>
           <Icon name="calendar-outline" size={13} color={COLORS.textMuted}/>
-          <Text style={card.metaText}>{item.date ? format(new Date(item.date), 'dd MMM yyyy') : '—'}</Text>
+          <Text style={card.metaText}>{item.appointmentDate ? format(new Date(item.appointmentDate), 'dd MMM yyyy') : '—'}</Text>
         </View>
         <View style={card.meta}>
           <Icon name="clock-outline" size={13} color={COLORS.textMuted}/>
-          <Text style={card.metaText}>{item.timeSlot?.startTime || '—'}</Text>
+          <Text style={card.metaText}>{item.startTime ? format(new Date(item.startTime), 'hh:mm a') : '—'}</Text>
         </View>
         <View style={card.meta}>
           <Icon name="ticket-outline" size={13} color={COLORS.textMuted}/>
           <Text style={card.metaText}>#{item.tokenNumber || '—'}</Text>
         </View>
       </View>
-      {item.appointmentStatus !== 'COMPLETED' && item.appointmentStatus !== 'CANCELLED' && (
+      {item.status !== 'COMPLETED' && item.status !== 'CANCELLED' && (
         <View style={card.quickActions}>
-          {item.appointmentStatus === 'CONFIRMED' && (
+          {item.status === 'IN_PROGRESS' && (
             <TouchableOpacity style={[card.qBtn, {backgroundColor: '#FEF3C7'}]}
-              onPress={() => onAction(item.id, 'IN_PROGRESS')}>
+              onPress={() => onAction(item.id, 'CONFIRMED')}>
               <Icon name="clock-outline" size={13} color="#B45309"/>
-              <Text style={[card.qText, {color: '#B45309'}]}>Start</Text>
+              <Text style={[card.qText, {color: '#B45309'}]}>Confirm</Text>
             </TouchableOpacity>
           )}
-          {item.appointmentStatus === 'IN_PROGRESS' && (
+          {item.status === 'CONFIRMED' && (
             <TouchableOpacity style={[card.qBtn, {backgroundColor: '#D1FAE5'}]}
               onPress={() => onAction(item.id, 'COMPLETED')}>
               <Icon name="check-all" size={13} color="#065F46"/>
@@ -250,7 +250,7 @@ export default function AdminAppointmentsScreen({navigation}: any) {
     queryFn: async () => {
       const params: any = {page, limit: 20};
       if (filter !== 'ALL') params.status = filter;
-      if (dateFilter) params.date = dateFilter;
+      if (dateFilter) params.appointmentDate = dateFilter;
       const res = await instance.get(api.getAllAppointments, {params});
       return res.data;
     },
@@ -261,7 +261,9 @@ export default function AdminAppointmentsScreen({navigation}: any) {
 
   const statusMutation = useMutation({
     mutationFn: ({id, status}: {id: string; status: string}) =>
-      instance.patch(api.updateAppointmentStatus, {appointmentId: id, status}),
+      status === 'COMPLETED'
+        ? instance.put(`/api/v1/patient/updateOpdAppointmentStatus/${id}`)
+        : instance.post(api.updateAppointmentStatus, {id, status}),
     onSuccess: () => {
       queryClient.invalidateQueries({queryKey: ['admin-appointments']});
       queryClient.invalidateQueries({queryKey: ['admin-counts']});
@@ -334,7 +336,7 @@ export default function AdminAppointmentsScreen({navigation}: any) {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.summaryRow}>
         {(Object.keys(STATUS_CONFIG) as string[]).map(st => {
           const cfg = STATUS_CONFIG[st];
-          const count = appointments.filter((a: any) => a.appointmentStatus === st).length;
+          const count = appointments.filter((a: any) => a.status === st).length;
           return (
             <TouchableOpacity key={st} style={[s.summaryCard, {backgroundColor: cfg.bg}]}
               onPress={() => setFilter(st as FilterStatus)}>
