@@ -33,7 +33,7 @@ function Card({item, onPress}: {item: any; onPress: () => void}) {
   const name = u ? `${u.fName || ''} ${u.lName || ''}`.trim() : 'Unknown';
   const init = name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
   const info = item.patient?.patientInfo;
-  const room = item.roomBooking?.room?.roomNumber;
+  const room = item.staySession?.currentRoomBooking?.room?.roomNumber;
 
   return (
     <TouchableOpacity style={c.wrap} onPress={onPress} activeOpacity={0.85}>
@@ -84,13 +84,15 @@ export default function DoctorInPatientScreen({navigation}: any) {
     queryKey: ['doctor-ipd-list', filter, search, page],
     queryFn: async () => {
       const params: any = {page, limit: 15};
-      if (filter !== 'ALL') params.status = filter;
-      if (search.trim())    params.search = search.trim();
+      // Backend takes one search at a time: by patient name OR by status
+      if (search.trim())         {params.search = search.trim(); params.filterType = 'patientName';}
+      else if (filter !== 'ALL') {params.search = filter;        params.filterType = 'status';}
       return (await instance.get(api.doctorGetAllAdmissions, {params})).data;
     },
   });
 
-  const items = data?.data || [];
+  let   items = data?.data || [];
+  if (search.trim() && filter !== 'ALL') items = items.filter((i: any) => i.status === filter);
   const meta  = data?.metadata;
 
   const onSearch = useCallback((t: string) => {setSearch(t); setPage(1);}, []);
