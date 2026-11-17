@@ -154,7 +154,7 @@ function TabVitals({admissionId, data, refetch}: any) {
   const submit = () => {
     mutation.mutate({
       admissionId,
-      patientId: admission?.patientId,
+      patientId: admission?.patientId || data?.patientInfo?.id,
       time: new Date().toISOString(),
       temperature:            form.temperature            ? parseFloat(form.temperature)            : undefined,
       pulse:                  form.pulse                  ? parseInt(form.pulse)                    : undefined,
@@ -258,7 +258,7 @@ function TabVisits({admissionId, data, refetch}: any) {
       ...form,
       admissionId,
       doctorId:  admission?.admittingDoctorId,
-      patientId: admission?.patientId,
+      patientId: admission?.patientId || data?.patientInfo?.id,
       visitDate: new Date().toISOString(),
       visitType: 'IPD',
     });
@@ -352,7 +352,7 @@ function TabMedication({admissionId, data, refetch}: any) {
   const submit = () => {
     if (selected.length === 0) {Alert.alert('Required', 'Add at least one medicine'); return;}
     mutation.mutate({
-      patientId:     admission?.patientId,
+      patientId:     admission?.patientId || data?.patientInfo?.id,
       admissionId,
       doctorId:      admission?.admittingDoctorId,
       notes,
@@ -527,7 +527,7 @@ function TabLab({admissionId, data, refetch}: any) {
                 </View>
               ))}
               <PrimaryBtn label="Create Lab Order" onPress={() => mutation.mutate({
-                patientId:   admission?.patientId,
+                patientId:   admission?.patientId || data?.patientInfo?.id,
                 doctorId:    admission?.admittingDoctorId,
                 admissionId,
                 testIds:     selected.map(s=>s.id),
@@ -570,19 +570,17 @@ function TabLab({admissionId, data, refetch}: any) {
 
 function TabDiet({admissionId, data, refetch}: any) {
   const queryClient = useQueryClient();
-  const diets     = data?.patientDiets || [];
-  const admission = data?.admissions?.[0];
+  const diets     = data?.diets || [];
+  const patientId = data?.patientInfo?.id;
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    dietType:'', instructions:'', calories:'', protein:'', carbs:'', fat:'',
-  });
+  const [form, setForm] = useState({specialInstructions:'', dieticianName:'', dieticianNotes:''});
 
   const mutation = useMutation({
     mutationFn: async (payload: any) => (await instance.post(api.addDiet, payload)).data,
     onSuccess: () => {
       Alert.alert('Success', 'Diet plan added');
       setShowForm(false);
-      setForm({dietType:'', instructions:'', calories:'', protein:'', carbs:'', fat:''});
+      setForm({specialInstructions:'', dieticianName:'', dieticianNotes:''});
       queryClient.invalidateQueries({queryKey: ['inpatient-detail', admissionId]});
       refetch();
     },
@@ -590,18 +588,14 @@ function TabDiet({admissionId, data, refetch}: any) {
   });
 
   const submit = () => {
-    if (!form.dietType.trim()) {Alert.alert('Required', 'Diet type is required'); return;}
-    mutation.mutate({
-      patientId:    admission?.patientId,
-      admissionId,
-      doctorId:     admission?.admittingDoctorId,
-      dietType:     form.dietType,
-      instructions: form.instructions,
-      calories:     form.calories ? parseFloat(form.calories) : undefined,
-      protein:      form.protein  ? parseFloat(form.protein)  : undefined,
-      carbs:        form.carbs    ? parseFloat(form.carbs)    : undefined,
-      fat:          form.fat      ? parseFloat(form.fat)      : undefined,
+    if (!form.specialInstructions.trim() && !form.dieticianNotes.trim()) {
+      Alert.alert('Required', 'Enter special instructions or dietician notes'); return;
+    }
+    const payload: any = {patientId, admissionId};
+    (Object.keys(form) as (keyof typeof form)[]).forEach(k => {
+      if (form[k].trim()) payload[k] = form[k].trim();
     });
+    mutation.mutate(payload);
   };
 
   return (
@@ -617,14 +611,9 @@ function TabDiet({admissionId, data, refetch}: any) {
       {showForm && (
         <View style={h.card}>
           <Text style={h.cardTitle}>Add Diet Plan</Text>
-          <FormField label="Diet Type *"    value={form.dietType}     onChange={(v:string)=>setForm(p=>({...p,dietType:v}))}     placeholder="e.g. Low sodium, Diabetic"/>
-          <FormField label="Instructions"   value={form.instructions} onChange={(v:string)=>setForm(p=>({...p,instructions:v}))} multiline placeholder="Diet instructions..."/>
-          <View style={h.grid2}>
-            <FormField label="Calories"  value={form.calories} onChange={(v:string)=>setForm(p=>({...p,calories:v}))} keyboardType="decimal-pad" placeholder="kcal"/>
-            <FormField label="Protein(g)"value={form.protein}  onChange={(v:string)=>setForm(p=>({...p,protein:v}))}  keyboardType="decimal-pad" placeholder="g"/>
-            <FormField label="Carbs(g)"  value={form.carbs}    onChange={(v:string)=>setForm(p=>({...p,carbs:v}))}    keyboardType="decimal-pad" placeholder="g"/>
-            <FormField label="Fat(g)"    value={form.fat}      onChange={(v:string)=>setForm(p=>({...p,fat:v}))}      keyboardType="decimal-pad" placeholder="g"/>
-          </View>
+          <FormField label="Special Instructions" value={form.specialInstructions} onChange={(v:string)=>setForm(p=>({...p,specialInstructions:v}))} multiline placeholder="e.g. Low sodium, diabetic diet"/>
+          <FormField label="Dietician Name"       value={form.dieticianName}       onChange={(v:string)=>setForm(p=>({...p,dieticianName:v}))}       placeholder="Dietician's name"/>
+          <FormField label="Dietician Notes"      value={form.dieticianNotes}      onChange={(v:string)=>setForm(p=>({...p,dieticianNotes:v}))}      multiline placeholder="Notes..."/>
           <PrimaryBtn label="Save Diet Plan" onPress={submit} loading={mutation.isPending}/>
         </View>
       )}
@@ -633,14 +622,13 @@ function TabDiet({admissionId, data, refetch}: any) {
         ? <EmptyState icon="food-apple-outline" title="No diet plans" subtitle="No diet plans added yet"/>
         : diets.map((diet: any) => (
           <View key={diet.id} style={h.card}>
-            <Text style={h.cardTitle}>{diet.dietType || 'Diet Plan'}</Text>
-            {diet.instructions && <Text style={h.notesText}>{diet.instructions}</Text>}
-            <View style={h.vitalsGrid}>
-              {diet.calories && <VitalCell label="Calories" value={`${diet.calories} kcal`}/>}
-              {diet.protein  && <VitalCell label="Protein"  value={`${diet.protein}g`}/>}
-              {diet.carbs    && <VitalCell label="Carbs"    value={`${diet.carbs}g`}/>}
-              {diet.fat      && <VitalCell label="Fat"      value={`${diet.fat}g`}/>}
+            <View style={h.cardRow}>
+              <Icon name="calendar-outline" size={13} color={COLORS.textMuted}/>
+              <Text style={h.metaText}>{diet.createdAt ? format(new Date(diet.createdAt), 'dd MMM yyyy, h:mm a') : '—'}</Text>
             </View>
+            <InfoRow label="Instructions" value={diet.specialInstructions}/>
+            <InfoRow label="Dietician"    value={diet.dieticianName}/>
+            <InfoRow label="Notes"        value={diet.dieticianNotes}/>
           </View>
         ))
       }
@@ -674,7 +662,7 @@ function TabDischarge({admissionId, data, refetch}: any) {
     if (!form.dischargeSummary.trim()) {Alert.alert('Required', 'Discharge summary is required'); return;}
     mutation.mutate({
       admissionId,
-      patientId:            admission?.patientId,
+      patientId:            admission?.patientId || data?.patientInfo?.id,
       doctorId:             admission?.admittingDoctorId,
       dischargeSummary:     form.dischargeSummary,
       followUpDate:         form.followUpDate || undefined,
@@ -731,9 +719,8 @@ export default function InPatientDetailScreen({route, navigation}: any) {
     queryFn: async () => {
       const res = await instance.get(api.getInPatientHistory(id), {
         params: {
-          patientInfo: true, user: true, roomBookings: true,
-          admissions: true, dischargeSummaries: true,
-          patientVitals: true, visits: true, labOrders: true,
+          admissions: true, roomBookingsfor: true, dischargeSummaries: true,
+          patientVitals: true, visitsBy: true, labOrders: true,
           prescribedTo: true, patientDiets: true, referrals: true,
         },
       });
